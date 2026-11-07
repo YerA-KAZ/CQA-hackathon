@@ -5,7 +5,13 @@
 __pycache__/
 .pytest_cache/
 data/
-results/
+results/*
+!results/dev/
+!results/prod/
+results/dev/*
+results/prod/*
+!results/dev/results.json
+!results/prod/results.json
 *.sqlite*
 *.db
 

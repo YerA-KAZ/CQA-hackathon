@@ -146,16 +146,77 @@ class CqaApp extends HTMLElement {
     const transcript = element("div", null, transcriptPanel);
     transcript.className = "transcript";
     const roles = {operator: "Оператор", client: "Клиент", bot: "Бот", system: "Система"};
-    const lines = conversation.transcript.map((line) => {
+    const recordingStart = player ? Date.parse(
+      conversation.transcript.find(line =>
+        line.speaker === "system" && /запись и транскрибирование запущены|recording and transcription (?:have )?(?:started|been started)/i.test(line.text)
+      )?.timestamp ?? conversation.transcript[0]?.timestamp
+    ) : NaN;
+    let timingCorrection = 0;
+    let timingInput;
+    if (player) {
+      const label = element("label", "Сдвиг подсветки, сек. ", transcriptPanel);
+      transcriptPanel.insertBefore(label, transcript);
+      timingInput = element("input", null, label);
+      timingInput.type = "number";
+      timingInput.step = "0.1";
+      timingInput.value = "0";
+      element("small", "Плюс — раньше, минус — позже", label);
+    }
+    const offsets = player ? conversation.transcript.map(line =>
+      (Date.parse(line.timestamp) - recordingStart) / 1000
+    ) : [];
+    const lines = conversation.transcript.map((line, index) => {
       const row = element("p", line.timestamp + " · " + roles[line.speaker] + "\n" + line.text, transcript);
       row.tabIndex = -1;
-      if (player) this.button(row, "Слушать", async () => {
-        const seconds = (Date.parse(line.timestamp) - Date.parse(conversation.transcript[0].timestamp)) / 1000;
-        if (Number.isFinite(seconds)) player.currentTime = Math.max(0, seconds);
+      if (Number.isFinite(offsets[index])) this.button(row, "Слушать", async () => {
+        const seconds = offsets[index];
+        player.currentTime = Math.max(0, seconds - timingCorrection);
         await player.play();
       });
       return row;
     });
+    if (player) {
+      const timeline = offsets.map((seconds, index) => ({seconds, index}))
+        .filter(entry => Number.isFinite(entry.seconds))
+        .sort((a, b) => a.seconds - b.seconds);
+      let activeRow;
+      let isPlaying = false;
+      const highlight = () => {
+        const entry = timeline.findLast(item => item.seconds <= player.currentTime + timingCorrection);
+        const row = isPlaying && !player.seeking ? lines[entry?.index] : undefined;
+        if (row === activeRow) return;
+        activeRow?.classList.remove("playing-line");
+        activeRow?.removeAttribute("aria-current");
+        activeRow = row;
+        if (!row) return;
+        row.classList.add("playing-line");
+        row.setAttribute("aria-current", "true");
+        const viewport = transcript.getBoundingClientRect();
+        const bounds = row.getBoundingClientRect();
+        if (bounds.top < viewport.top || bounds.bottom > viewport.bottom) {
+          transcript.scrollTop += bounds.top - viewport.top;
+        }
+      };
+      timingInput.addEventListener("input", () => {
+        timingCorrection = Number.isFinite(timingInput.valueAsNumber) ? timingInput.valueAsNumber : 0;
+        highlight();
+      });
+      player.addEventListener("playing", () => {
+        isPlaying = true;
+        highlight();
+      });
+      player.addEventListener("seeked", () => {
+        isPlaying = !player.paused && !player.ended && player.readyState >= 3;
+        highlight();
+      });
+      player.addEventListener("timeupdate", highlight);
+      for (const event of ["waiting", "seeking", "pause", "ended", "error", "emptied"]) {
+        player.addEventListener(event, () => {
+          isPlaying = false;
+          highlight();
+        });
+      }
+    }
     for (const item of assessment?.criteria ?? []) {
       const criterion = this.checklist.find(entry => entry.id === item.criterion_id);
       if (!criterion) continue;

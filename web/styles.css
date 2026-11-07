@@ -57,3 +57,16 @@ details label :is(input:not([type=checkbox]), select, textarea) { display: block
 .score-ring strong { font-size: 1.7rem; line-height: 1.1; }
 .score-ring span, .score-caption { color: #46566a; font-size: .9rem; }
 .score-caption { margin: .5rem 0 1rem; }
+
+.transcript p.playing-line {
+  background: #c8f0de;
+  box-shadow: inset 4px 0 #087b55;
+}
+
+.transcript p.playing-line::before {
+  content: "▶ Сейчас в записи";
+  display: block;
+  margin-bottom: .25rem;
+  color: #07513e;
+  font-weight: 700;
+}

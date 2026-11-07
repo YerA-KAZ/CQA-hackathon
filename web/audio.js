@@ -15,7 +15,7 @@ export function addRecording(container, conversation, make) {
   const player = make("audio", null, panel);
   player.controls = true;
   player.preload = "metadata";
-  player.src = conversation.audio_url;
+
   player.addEventListener("error", () => { message.textContent = "Не удалось открыть запись звонка."; });
 
   let peaks = [];
@@ -43,7 +43,28 @@ export function addRecording(container, conversation, make) {
   });
 
   async function loadWaveform() {
-    const response = await fetch(conversation.audio_url);
+    let response = await fetch(conversation.audio_url);
+    if (response.ok && response.headers.get("content-type")?.includes("text/html")) {
+      const page = document.createElement("template");
+      page.innerHTML = await response.text();
+      const media = page.content.querySelector("audio[src], audio source[src], source[type^='audio/']");
+      const link = [...page.content.querySelectorAll("a[href]")].find(anchor =>
+        /\.(mp3|wav|ogg|opus|m4a|aac|flac)(?:[?#]|$)/i.test(anchor.getAttribute("href"))
+      );
+      const target = media?.getAttribute("src") || link?.getAttribute("href");
+      const url = target && new URL(target, response.url);
+      if (!url || url.protocol !== "https:" || url.username || url.password || url.href === response.url) {
+        throw new Error("Источник вернул HTML-страницу без прямой ссылки на аудио.");
+      }
+      player.src = url.href;
+      response = await fetch(url);
+      if (response.headers.get("content-type")?.includes("text/html")) {
+        player.removeAttribute("src");
+        throw new Error("Ссылка на запись снова вернула HTML-страницу.");
+      }
+    } else {
+      player.src = conversation.audio_url;
+    }
     if (!response.ok) throw new Error("Audio unavailable");
     if (!panel.isConnected) return;
     const context = new AudioContext();
@@ -66,9 +87,17 @@ export function addRecording(container, conversation, make) {
       await context.close();
     }
   }
-  loadWaveform().catch(() => {
+  loadWaveform().catch(error => {
     canvas.hidden = true;
     seek.hidden = true;
+    if (!player.getAttribute("src")) {
+      if (error.message.includes("HTML")) {
+        player.hidden = true;
+        message.textContent = error.message;
+        return;
+      }
+      player.src = conversation.audio_url;
+    }
     if (!player.error) message.textContent = "Звуковая волна недоступна. Для перехода по записи используйте плеер.";
   });
   return player;
