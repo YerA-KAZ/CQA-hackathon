@@ -1,0 +1,83 @@
+{
+  "identification_confirmed": {
+    "RU": [
+      "личность подтверждена",
+      "идентификация пройдена"
+    ],
+    "KZ": [
+      "жеке басы расталды",
+      "сәйкестендіруден өтті"
+    ],
+    "EN": [
+      "identity verified",
+      "verification successful"
+    ]
+  },
+  "escalated": {
+    "RU": [
+      "передано оператору"
+    ],
+    "KZ": [
+      "операторға жіберілді"
+    ],
+    "EN": [
+      "transferred to an operator"
+    ]
+  },
+  "closed_by_operator": {
+    "RU": [
+      "чат закрыт оператором"
+    ],
+    "KZ": [
+      "чатты оператор жапты"
+    ],
+    "EN": [
+      "chat closed by operator"
+    ]
+  },
+  "closed_by_client": {
+    "RU": [
+      "чат закрыт клиентом"
+    ],
+    "KZ": [
+      "чатты клиент жапты"
+    ],
+    "EN": [
+      "chat closed by client"
+    ]
+  },
+  "disconnected": {
+    "RU": [
+      "соединение прервано"
+    ],
+    "KZ": [
+      "байланыс үзілді"
+    ],
+    "EN": [
+      "connection lost"
+    ]
+  },
+  "hold_started": {
+    "RU": [
+      "вызов поставлен на удержание"
+    ],
+    "KZ": [
+      "қоңырау күту режиміне қойылды"
+    ],
+    "EN": [
+      "call placed on hold"
+    ]
+  },
+  "hold_ended": {
+    "RU": [
+      "вызов снят с удержания"
+    ],
+    "KZ": [
+      "қоңырау күту режимінен алынды"
+    ],
+    "EN": [
+      "call resumed"
+    ]
+  }
+}
+
