@@ -77,6 +77,14 @@ def error_record(conversation_id, reason):
     }
 
 
+def select_part(records, part, first_count):
+    if first_count is None:
+        return records[part - 1::2]
+    if not 0 < first_count < len(records):
+        raise ValueError("Размер первой части должен быть меньше размера набора и больше нуля.")
+    return records[:first_count] if part == 1 else records[first_count:]
+
+
 async def generate(args, model):
     criteria = TypeAdapter(list[Criterion]).validate_json(
         (ROOT / "app/config/checklist.default.json").read_bytes()
@@ -94,10 +102,13 @@ async def generate(args, model):
     if chats != (60 if args.split == "dev" else 10):
         raise ValueError(f"Состав набора {args.split} не соответствует гайду.")
 
+    records = dataset.records
+    if args.part:
+        records = select_part(sorted(records, key=lambda item: item.conversation_id), args.part, args.first_count)
     results = []
     async with httpx.AsyncClient(timeout=120, trust_env=False) as client:
         provider = OllamaProvider(client, os.getenv("OLLAMA_URL", "http://127.0.0.1:11434"), model)
-        for index, conversation in enumerate(dataset.records, 1):
+        for index, conversation in enumerate(records, 1):
             try:
                 result = await evaluate(conversation, criteria, provider)
             except httpx.HTTPError:
@@ -105,9 +116,12 @@ async def generate(args, model):
             except (ValueError, KeyError, TypeError, OverflowError):
                 result = error_record(conversation.conversation_id, "Не удалось обработать диалог или подтвердить оценку.")
             results.append(result)
-            print(f"{index}/{expected} {conversation.conversation_id}: {result['status']}", flush=True)
+            print(f"{index}/{len(records)} {conversation.conversation_id}: {result['status']}", flush=True)
 
-    path = ROOT / "results" / args.split / "results.json"
+    path = (
+        ROOT / "data" / f"{args.split}-part-{args.part}.json"
+        if args.part else ROOT / "results" / args.split / "results.json"
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp")
     payload = {
@@ -116,18 +130,65 @@ async def generate(args, model):
         "model": {"mode": "local", "name": model},
         "results": results,
     }
+    if args.part:
+        payload.update(group_id=dataset.dataset_group_id, part=args.part, source_ids=sorted(ids), first_count=args.first_count)
     temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     temporary.replace(path)
     errors = sum(result["status"] == "error" for result in results)
     print(f"{path}: {len(results)} записей, {errors} ошибок")
 
 
+def merge_parts(split):
+    parts = [
+        json.loads((ROOT / "data" / f"{split}-part-{index}.json").read_text(encoding="utf-8"))
+        for index in (1, 2)
+    ]
+    first, second = parts
+    header = ("schema_version", "team_name", "model", "group_id", "source_ids")
+    if any(first[key] != second[key] for key in header):
+        raise ValueError("Части должны иметь одинаковый набор, команду и модель.")
+    first_count = first.get("first_count")
+    if first_count != second.get("first_count"):
+        raise ValueError("Обе части должны использовать одинаковое разделение.")
+    source_ids = first["source_ids"]
+    if len(source_ids) != COUNTS[split] or source_ids != sorted(set(source_ids)):
+        raise ValueError("Неверный список исходных ID.")
+    results = []
+    for index, part in enumerate(parts):
+        rows = part["results"]
+        if part["part"] != index + 1 or [row["conversation_id"] for row in rows] != select_part(source_ids, index + 1, first_count):
+            raise ValueError(f"В части {index + 1} есть пропуски, дубликаты или неверные ID.")
+        results.extend(rows)
+    payload = {key: first[key] for key in ("schema_version", "team_name", "model")}
+    payload["results"] = sorted(results, key=lambda row: row["conversation_id"])
+    path = ROOT / "results" / split / "results.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+    print(f"{path}: {len(results)} записей, {sum(row['status'] == 'error' for row in results)} ошибок")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("split", choices=COUNTS)
-    parser.add_argument("--group-id", required=True)
-    parser.add_argument("--team", required=True)
+    parser.add_argument("--group-id")
+    parser.add_argument("--team")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--part", type=int, choices=(1, 2))
+    mode.add_argument("--merge", action="store_true")
+    parser.add_argument("--first-count", type=int, help="Number of dialogues assigned to part 1")
     args = parser.parse_args()
+    if args.first_count is not None and (not args.part or not 0 < args.first_count < COUNTS[args.split]):
+        parser.error("--first-count requires --part and must be smaller than the dataset.")
+    if args.merge:
+        try:
+            merge_parts(args.split)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            parser.exit(1, f"{error}\n")
+        return
+    if not args.group_id or not args.team:
+        parser.error("Укажите --group-id и --team.")
     load_dotenv(ROOT / ".env")
     model = os.getenv("OLLAMA_MODEL", "").strip()
     if not args.team.strip() or not model:

@@ -85,3 +85,20 @@ git add -- results/dev/results.json results/prod/results.json
 git commit -m "Add hackathon evaluation results"
 git push origin main
 ```
+
+Для параллельного прогона DEV используйте одинаковую версию проекта, название команды и модель Ollama. Напарник запускает часть на 43 диалога, второй участник запускает часть на 22.
+
+```powershell
+# Напарник, 43 диалога
+.\.venv\Scripts\python.exe -m scripts.generate_results dev --group-id DEV --team "Название команды" --part 1 --first-count 43
+# Второй участник, 22 диалога
+.\.venv\Scripts\python.exe -m scripts.generate_results dev --group-id DEV --team "Название команды" --part 2 --first-count 43
+```
+
+Когда обе части готовы, положите `data/dev-part-1.json` и `data/dev-part-2.json` в папку `data/` на одном компьютере и запустите:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.generate_results dev --merge
+```
+
+Объединение проверит обе части и создаст `results/dev/results.json`.
