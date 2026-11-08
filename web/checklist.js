@@ -1,18 +1,29 @@
 export function buildChecklistEditor(container, make) {
   const toolbar = make("div", null, container);
+  toolbar.className = "editor-toolbar";
   const toggle = make("button", "Режим JSON", toolbar);
   const add = make("button", "Добавить критерий", toolbar);
   const form = make("div", null, container);
+  form.className = "editor-list";
   const json = make("textarea", null, container);
+  json.className = "editor-json";
   json.rows = 16;
   json.hidden = true;
   json.setAttribute("aria-label", "Чек-лист в формате JSON");
   const error = make("p", null, container);
+  error.className = "editor-error";
   error.setAttribute("role", "alert");
   let draft = [];
 
   function read() {
-    const value = json.hidden ? draft : JSON.parse(json.value);
+    let value = draft;
+    if (!json.hidden) {
+      try {
+        value = JSON.parse(json.value);
+      } catch {
+        throw new Error("Проверьте синтаксис JSON в чек-листе.");
+      }
+    }
     if (!Array.isArray(value) || value.some(item => !item || typeof item !== "object" || Array.isArray(item))) {
       throw new Error("Укажите массив объектов критериев.");
     }
@@ -41,6 +52,7 @@ export function buildChecklistEditor(container, make) {
     form.replaceChildren();
     draft.forEach((item, index) => {
       const card = make("details", null, form);
+      card.className = "editor-card";
       card.open = index === openIndex;
       const title = () => [item.id, item.name].filter(Boolean).join(" · ") || "Новый критерий";
       const summary = make("summary", title(), card);
@@ -61,14 +73,16 @@ export function buildChecklistEditor(container, make) {
         if (type === "flag") item.weight = 0;
         item.scale_steps = type === "scale" ? [{value: 0, description: ""}, {value: 10, description: ""}] : [];
         render(index);
+        form.children[index].querySelector("select").focus();
       }, {choices: [["yes_no", "Да / Нет"], ["scale", "Шкала"], ["flag", "Флаг"]]});
       field(card, "Описание", item.description, bind("description"), {multiline: true});
       field(card, "Разрешить «Не применимо»", item.na_allowed, value => {
         item.na_allowed = value;
         if (!value) item.na_condition = null;
         render(index);
+        form.children[index].querySelector('input[type="checkbox"]').focus();
       }, {type: "checkbox"});
-      if (item.na_allowed) field(card, "Условие применимости N/A", item.na_condition, bind("na_condition"));
+      if (item.na_allowed) field(card, "Условие для ответа «Не применимо»", item.na_condition, bind("na_condition"));
       if (item.sub_questions?.length) make("p", "Используются подвопросы из JSON. Изменение описания или шкалы переключит критерий на прямую оценку.", card);
       if (item.answer_type === "scale") {
         make("h4", "Ступени шкалы", card);
@@ -78,14 +92,22 @@ export function buildChecklistEditor(container, make) {
           row.className = "editor-fields";
           field(row, "Балл", step.value, value => { step.value = value; item.sub_questions = []; }, {type: "number"});
           field(row, "Описание ступени", step.description, value => { step.description = value; item.sub_questions = []; });
-          make("button", "Удалить ступень", row).onclick = () => { steps.splice(stepIndex, 1); item.sub_questions = []; render(index); };
+          const remove = make("button", "Удалить ступень", row);
+          remove.className = "remove";
+          remove.onclick = () => { steps.splice(stepIndex, 1); item.sub_questions = []; render(index); };
         });
         make("button", "Добавить ступень", card).onclick = () => {
           steps.push({value: 0, description: ""}); item.sub_questions = [];
           render(index);
         };
       }
-      make("button", "Удалить критерий", card).onclick = () => { draft.splice(index, 1); render(); };
+      const remove = make("button", "Удалить критерий", card);
+      remove.className = "remove";
+      remove.onclick = () => {
+        draft.splice(index, 1);
+        render();
+        (form.children[Math.min(index, draft.length - 1)]?.querySelector("summary") ?? add).focus();
+      };
     });
   }
 
