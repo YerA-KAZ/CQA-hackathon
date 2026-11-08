@@ -26,7 +26,11 @@ class CqaApp extends HTMLElement {
   connectedCallback() {
     element("header", "Freedom Broker · Контроль качества", this);
     const main = element("main", null, this);
+    element("h1", "Рабочее место контроля качества", main);
+    element("p", "Загрузите диалоги, проверьте оценки и рассмотрите спорные ответы.", main).className = "intro";
     const toolbar = element("section", null, main);
+    toolbar.className = "toolbar";
+    element("strong", "Набор диалогов", toolbar);
     const group = element("input", null, toolbar);
     group.value = "DEV";
     group.setAttribute("aria-label", "Группа диалогов");
@@ -51,8 +55,23 @@ class CqaApp extends HTMLElement {
 
     const layout = element("div", null, main);
     layout.className = "layout";
-    this.list = element("aside", null, layout);
-    this.detail = element("section", "Выберите диалог", layout);
+    const sidebar = element("aside", null, layout);
+    element("h2", "Диалоги", sidebar);
+    this.search = element("input", null, sidebar);
+    this.search.type = "search";
+    this.search.placeholder = "Найти по ID диалога";
+    this.search.setAttribute("aria-label", "Найти диалог");
+    this.filter = element("select", null, sidebar);
+    this.filter.setAttribute("aria-label", "Статус оценки");
+    for (const [value, name] of [["all", "Все диалоги"], ["pending", "Без оценки"], ["review", "Недостоверные"], ["scored", "С баллом"]]) {
+      element("option", name, this.filter).value = value;
+    }
+    this.search.addEventListener("input", () => this.renderList());
+    this.filter.addEventListener("change", () => this.renderList());
+    this.listCount = element("p", null, sidebar);
+    this.list = element("nav", null, sidebar);
+    this.list.setAttribute("aria-label", "Список диалогов");
+    this.detail = element("section", "Загрузите набор и выберите диалог слева, чтобы увидеть расшифровку и оценку.", layout);
     this.run(() => this.refresh(true));
   }
 
@@ -61,11 +80,16 @@ class CqaApp extends HTMLElement {
     this.busy = true;
     this.setAttribute("aria-busy", "true");
     this.status.textContent = "Выполняется…";
+    this.status.className = "status working";
+    this.querySelectorAll("button:not(.stop)").forEach(button => { button.disabled = true; });
     try {
       this.status.textContent = await action() ?? "";
     } catch (error) {
       this.status.textContent = error.message;
+      this.status.className = "status error";
     } finally {
+      this.querySelectorAll("button:not(.stop)").forEach(button => { button.disabled = false; });
+      this.status.classList.remove("working");
       this.busy = false;
       this.setAttribute("aria-busy", "false");
     }
@@ -75,6 +99,7 @@ class CqaApp extends HTMLElement {
     const button = element("button", text, parent);
     button.type = "button";
     button.addEventListener("click", () => this.run(action));
+    return button;
   }
 
   async refresh(loadChecklist = false) {
@@ -82,29 +107,49 @@ class CqaApp extends HTMLElement {
       this.checklist = await request("/checklist");
       this.editor.load(this.checklist);
     }
-    const rows = await request("/conversations");
-    this.list.replaceChildren();
-    element("h2", "Диалоги", this.list);
-    for (const row of rows) {
-      const status = row.unreliable ? "Недостоверно" : row.total ?? "Без оценки";
-      this.button(this.list, [row.conversation_id, row.language, status, row.flag === "yes" ? "Грубая ошибка" : ""].filter(Boolean).join(" · "),
-        () => this.open(row.conversation_id));
-    }
+    this.rows = await request("/conversations");
+    this.renderList();
     if (this.selected) await this.open(this.selected);
   }
 
+  renderList() {
+    const query = this.search.value.trim().toLowerCase();
+    const rows = (this.rows ?? []).filter(row => {
+      const status = row.unreliable ? "review" : row.total != null ? "scored" : "pending";
+      return row.conversation_id.toLowerCase().includes(query) &&
+        (this.filter.value === "all" || this.filter.value === status);
+    });
+    this.list.replaceChildren();
+    this.listCount.textContent = "Показано " + rows.length + " из " + (this.rows?.length ?? 0);
+    if (!rows.length) element("p", "Диалоги не найдены. Измените фильтр или загрузите набор.", this.list);
+    for (const row of rows) {
+      const button = this.button(this.list, row.conversation_id, () => this.open(row.conversation_id));
+      button.dataset.id = row.conversation_id;
+      button.setAttribute("aria-current", String(row.conversation_id === this.selected));
+      button.disabled = Boolean(this.busy);
+      const status = row.unreliable ? "Требует проверки" : row.total != null ? row.total + " / 100" : "Без оценки";
+      element("span", row.language + " · " + (row.channel === "voice call" ? "Звонок" : "Чат") + " · " + status, button);
+      if (row.flag === "yes") element("strong", "Грубая ошибка", button);
+    }
+  }
   async open(id) {
     const path = "/conversations/" + encodeURIComponent(id);
     const {conversation, assessment} = await request(path);
     this.selected = id;
+    for (const button of this.list.querySelectorAll("button")) {
+      button.setAttribute("aria-current", String(button.dataset.id === id));
+    }
+    this.detail.querySelector("audio")?.pause();
     this.detail.replaceChildren();
     element("h2", id, this.detail);
+    element("p", (conversation.channel === "voice call" ? "Звонок" : "Чат") + " · " + conversation.language + " · " + conversation.transcript.length + " реплик", this.detail).className = "intro";
     const actions = element("div", null, this.detail);
     const stop = element("button", "Стоп", actions);
     stop.hidden = true;
     stop.className = "stop";
     this.button(actions, "Оценить", async () => {
       const controller = new AbortController();
+      this.status.textContent = "Анализ диалога… Можно остановить кнопкой «Стоп».";
       stop.hidden = false;
       stop.onclick = () => controller.abort();
       try {
@@ -166,7 +211,13 @@ class CqaApp extends HTMLElement {
       (Date.parse(line.timestamp) - recordingStart) / 1000
     ) : [];
     const lines = conversation.transcript.map((line, index) => {
-      const row = element("p", line.timestamp + " · " + roles[line.speaker] + "\n" + line.text, transcript);
+      const seconds = offsets[index];
+      const time = Number.isFinite(seconds) && seconds >= 0
+        ? Math.floor(seconds / 60) + ":" + String(Math.floor(seconds % 60)).padStart(2, "0")
+        : line.timestamp;
+      const row = element("p", time + " · " + roles[line.speaker] + "\n" + line.text, transcript);
+      row.title = line.timestamp;
+      row.dataset.speaker = line.speaker;
       row.tabIndex = -1;
       if (Number.isFinite(offsets[index])) this.button(row, "Слушать", async () => {
         const seconds = offsets[index];
@@ -223,6 +274,7 @@ class CqaApp extends HTMLElement {
       const article = element("article", null, evaluation);
       element("h3", criterion.name + " · вес " + criterion.weight, article);
       element("p", "Исходная оценка: " + (item.unreliable ? "Недостоверно" : label(item.result?.answer)), article);
+      if (item.unreliable && item.failure_reason) element("p", item.failure_reason, article);
       element("p", "Финальная оценка: " + label(assessment.final_answers?.[criterion.id] ?? item.result?.answer), article);
       if (item.result) {
         element("p", item.result.reasoning, article);

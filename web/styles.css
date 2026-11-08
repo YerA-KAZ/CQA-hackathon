@@ -70,3 +70,40 @@ details label :is(input:not([type=checkbox]), select, textarea) { display: block
   color: #07513e;
   font-weight: 700;
 }
+
+main { max-width: 1600px; padding: 1.5rem 2rem; }
+h1 { font-size: 1.65rem; margin: .25rem 0; letter-spacing: -.025em; }
+h2 { font-size: 1.25rem; margin-top: 0; }
+h3 { font-size: 1rem; }
+.intro { color: #566477; margin-top: .4rem; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin-top: 1.4rem; }
+.toolbar input { width: 9rem; }
+.toolbar button { background: #087b55; color: white; border-color: #087b55; }
+.layout { grid-template-columns: 290px minmax(0, 1fr); align-items: start; }
+aside { position: sticky; top: 1rem; }
+aside :is(input, select) { width: 100%; margin: .25rem 0; }
+aside nav { max-height: 63vh; overflow: auto; }
+aside button { padding: .8rem; background: white; border-color: #dce5e0; }
+aside button span, aside button strong { display: block; margin-top: .35rem; font-size: .8rem; }
+aside button span { color: #566477; }
+aside button strong { color: #a12b24; }
+aside button[aria-current=true] { background: #e2f3eb; border-color: #087b55; box-shadow: inset 3px 0 #087b55; }
+button:hover:not(:disabled) { filter: brightness(.96); }
+:is(button, input, select, textarea, summary):focus-visible { outline: 3px solid #259872; outline-offset: 2px; }
+input, select, textarea { border: 1px solid #bccbc4; border-radius: .35rem; background: white; }
+.status:not(:empty) { padding: .8rem 1rem; border-radius: .4rem; background: #e9f2ef; }
+.status.error { background: #fff0ed; color: #932f25; }
+.status.working::before { content: "◌ "; font-weight: bold; }
+article { border: 1px solid #dce5e0; padding: 1rem; border-radius: .5rem; margin: .75rem 0; }
+article h3 { margin-top: 0; }
+article input { width: calc(100% - .5rem); }
+.transcript { max-height: 65vh; }
+.transcript p { padding: 1rem; line-height: 1.6; border-bottom: 1px solid #e6ece9; overflow-wrap: anywhere; }
+.transcript p[data-speaker=system] { font-size: .8rem; color: #637168; }
+.recording { margin: 1rem 0; }
+@media (max-width: 850px) {
+  main { padding: 1rem; }
+  .layout { grid-template-columns: 1fr; }
+  aside { position: static; }
+  aside nav { max-height: 15rem; }
+}

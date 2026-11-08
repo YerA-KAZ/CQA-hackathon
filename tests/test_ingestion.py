@@ -97,7 +97,13 @@ def test_assessment_api_retries_and_persists(tmp_path):
     def reply(answer):
         return json.dumps({
             "evidence_indices": [0], "reasoning": "fixture",
-            "applicable": True, "answer": answer,
+            "applicable": True, "answer": 0 if type(answer) is int else answer,
+            "evidence": [{"index": 0, "quote": "Hello"}],
+            "sub_answers": [
+                {"id": f"level_{value}", "answer": value == answer,
+                 "evidence": [{"index": 0, "quote": "Hello"}]}
+                for value in ([0, 5, 10, 15, 20] if answer == 20 else [0, 4, 7, 10])
+            ] if type(answer) is int else [],
         })
 
     storage = Storage(tmp_path / "cqa.sqlite3")
@@ -163,3 +169,15 @@ def test_invalid_assessment_is_marked_unreliable():
     ))
     assert result.unreliable
     assert result.result is None
+
+
+def test_quotes_must_match_original_turn():
+    from app.judge.judge import validate_evidence
+    from app.schemas import EvidenceQuote
+
+    transcript = prepare_transcript(make_conversation([("00:00", "operator", "Hello")]))
+    with pytest.raises(ValueError, match="Quote"):
+        validate_evidence([EvidenceQuote(index=0, quote="Invented")], None, transcript)
+    with pytest.raises(ValueError, match="required"):
+        validate_evidence([], None, transcript)
+    validate_evidence([], (0, 0), transcript)

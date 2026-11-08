@@ -48,6 +48,7 @@ export function buildChecklistEditor(container, make) {
       grid.className = "editor-fields";
       const bind = key => value => {
         item[key] = value;
+        if (key === "description") item.sub_questions = [];
         summary.textContent = title();
       };
       field(grid, "Код", item.id, bind("id"));
@@ -56,6 +57,7 @@ export function buildChecklistEditor(container, make) {
       field(grid, "Вес", item.weight, bind("weight"), {type: "number"}).disabled = item.answer_type === "flag";
       field(grid, "Тип ответа", item.answer_type, type => {
         item.answer_type = type;
+        item.sub_questions = [];
         if (type === "flag") item.weight = 0;
         item.scale_steps = type === "scale" ? [{value: 0, description: ""}, {value: 10, description: ""}] : [];
         render(index);
@@ -67,18 +69,19 @@ export function buildChecklistEditor(container, make) {
         render(index);
       }, {type: "checkbox"});
       if (item.na_allowed) field(card, "Условие применимости N/A", item.na_condition, bind("na_condition"));
+      if (item.sub_questions?.length) make("p", "Используются подвопросы из JSON. Изменение описания или шкалы переключит критерий на прямую оценку.", card);
       if (item.answer_type === "scale") {
         make("h4", "Ступени шкалы", card);
         const steps = item.scale_steps ??= [];
         steps.forEach((step, stepIndex) => {
           const row = make("div", null, card);
           row.className = "editor-fields";
-          field(row, "Балл", step.value, value => { step.value = value; }, {type: "number"});
-          field(row, "Описание ступени", step.description, value => { step.description = value; });
-          make("button", "Удалить ступень", row).onclick = () => { steps.splice(stepIndex, 1); render(index); };
+          field(row, "Балл", step.value, value => { step.value = value; item.sub_questions = []; }, {type: "number"});
+          field(row, "Описание ступени", step.description, value => { step.description = value; item.sub_questions = []; });
+          make("button", "Удалить ступень", row).onclick = () => { steps.splice(stepIndex, 1); item.sub_questions = []; render(index); };
         });
         make("button", "Добавить ступень", card).onclick = () => {
-          steps.push({value: 0, description: ""});
+          steps.push({value: 0, description: ""}); item.sub_questions = [];
           render(index);
         };
       }

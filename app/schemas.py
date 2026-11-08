@@ -21,6 +21,7 @@ class ScaleStep(BaseModel):
 class SubQuestion(BaseModel):
     id: str
     question: str
+    score_if_yes: int = Field(ge=0)
 
 
 class Criterion(BaseModel):
@@ -49,6 +50,12 @@ class Criterion(BaseModel):
             raise ValueError("Flags must have zero weight")
         if self.na_allowed != bool(self.na_condition):
             raise ValueError("An N/A condition is required exactly when N/A is allowed")
+        if self.sub_questions:
+            ids = [question.id for question in self.sub_questions]
+            if self.answer_type != AnswerType.SCALE or len(ids) != len(set(ids)):
+                raise ValueError("Subquestions require a scale and unique IDs")
+            if any(question.score_if_yes not in values for question in self.sub_questions):
+                raise ValueError("Subquestion scores must be valid scale steps")
         return self
 
 
@@ -66,6 +73,18 @@ class Conversation(BaseModel):
     audio_url: str | None = Field(default=None, repr=False)
 
 
+class EvidenceQuote(BaseModel):
+    index: int = Field(ge=0)
+    quote: str = Field(min_length=1)
+
+
+class SubAnswer(BaseModel):
+    id: str
+    answer: bool
+    evidence: list[EvidenceQuote]
+    checked_range: tuple[int, int] | None = None
+
+
 class JudgeResult(BaseModel):
     evidence_indices: list[int] = Field(default_factory=list)
     checked_range: tuple[int, int] | None = None
@@ -73,4 +92,6 @@ class JudgeResult(BaseModel):
     applicable: bool
     answer: Answer
     na_reason: str | None = None
+    evidence: list[EvidenceQuote] = Field(default_factory=list)
+    sub_answers: list[SubAnswer] = Field(default_factory=list)
 
